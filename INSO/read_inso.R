@@ -8,8 +8,6 @@ library(httr)
 library(googledrive)
 library(googlesheets4)
 
-# setwd("~/Documents/RWorkDir/ebola_pdfs")
-
 # authenticate yourself with google sheets
 # drive_auth(
 #   email = gargle::gargle_oauth_email(),
@@ -19,13 +17,12 @@ library(googlesheets4)
 # )
 
 #get INSO Master sheet
-  insoDataMaster <- as.data.frame(read_sheet(drive_get(id = "1v-ckh_dyAfkIssFn4UM9OMgJsLLDqjLx803eD7QGczo" )))
+  insoDataMaster <- as.data.frame(read_sheet(drive_get(id = "EXAMPLE SHEET ID" )))
   insoDataMaster$Heure <- format(insoDataMaster$Heure, "%I:%M %p")
   insoDataMaster$Latitude <- as.numeric(insoDataMaster$Latitude)
   insoDataMaster$Longitude <- as.numeric(insoDataMaster$Longitude)
 
 #load locations data
-#locations <- as.data.frame(read_sheet(drive_get(id = "1o7uex23bB_1LhfdcAs4zzYudKNk_ahbRkTlJO0olx3U")))
   locations <- readRDS("locationsDRC.RDS") %>% 
     select(PROVINCE, TERRITOIRE, LOCALITE, "Latitude" = LATITUDE, "Longitude" = LONGITUDE)
 
@@ -33,7 +30,7 @@ library(googlesheets4)
   nowFiles <- unique(insoDataMaster$scraped_file_name)
 
 # Locate new files that haven't been processed
-  driveFiles <- drive_ls(path = "https://drive.google.com/drive/folders/1ypOS_cCe-6G1lJh9nh23gGCJucqA_YHW")
+  driveFiles <- drive_ls(path = "DRIVE FOLDER WHERE FILES ARE STORED")
   driveFiles <- driveFiles[grep("INSO ALERT", driveFiles$name),]
   newFiles <- driveFiles[!(driveFiles$name %in% nowFiles),]
 
@@ -54,12 +51,12 @@ if(nrow(newFiles) > 0) {
   for (i in 1:nrow(newFiles)) {
     # read a new pdf file from drive to temp file
       drive_download(drive_get(id = newFiles$id[i], 
-                                team_drive = "Technology for Development"),
-                                path = "/Users/hannacamp/Documents/RWorkDir/ebola_pdfs/tempFile",
+                                team_drive = "TEAM DRIVE NAME"),
+                                path = "local file path",
                                 overwrite = T)
     
     # read text
-      text <- read.delim("/Users/hannacamp/Documents/RWorkDir/ebola_pdfs/tempFile", stringsAsFactors = F)
+      text <- read.delim("tempFile path", stringsAsFactors = F)
       names(text) <- "text"
     
     # find report date, time, and filename
@@ -145,9 +142,8 @@ if(nrow(newFiles) > 0) {
   write.csv(insoDataMaster, "./INSO_Scraping_MASTER.csv", row.names = F)
   
   # publish updated file to Drive
-  drive_update(file = "https://docs.google.com/spreadsheets/d/1v-ckh_dyAfkIssFn4UM9OMgJsLLDqjLx803eD7QGczo",
+  drive_update(file = "SAME FILE ID AS ABOVE",
                media = "./INSO_Scraping_MASTER.csv"
-               # path = as_id("https://drive.google.com/drive/u/0/folders/1cM2Cb_PBFPlzOvbl8Ki_lZt4vsYFfZWR"),
                # type = "spreadsheet",
                # overwrite = T
     )
