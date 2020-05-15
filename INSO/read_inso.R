@@ -1,12 +1,5 @@
-library(dplyr)
-library(pdftools)
-library(reshape2)
-library(stringr)
-library(magrittr)
-library(openssl)
-library(httr)
-library(googledrive)
-library(googlesheets4)
+library(dplyr); library(pdftools); library(reshape2); library(stringr); library(magrittr)
+library(openssl); library(httr); library(googledrive); library(googlesheets4)
 
 # authenticate yourself with google sheets
 # drive_auth(
@@ -17,26 +10,29 @@ library(googlesheets4)
 # )
 
 #get INSO Master sheet
-  insoDataMaster <- as.data.frame(read_sheet(drive_get(id = "EXAMPLE SHEET ID" )))
-  insoDataMaster$Heure <- format(insoDataMaster$Heure, "%I:%M %p")
-  insoDataMaster$Latitude <- as.numeric(insoDataMaster$Latitude)
-  insoDataMaster$Longitude <- as.numeric(insoDataMaster$Longitude)
+  insoDataMaster <- as.data.frame(read_sheet(drive_get(id = "EXAMPLE SHEET ID" ),
+                                             na = "NA",
+                                             col_types = "cnnncccccccnnc")) %>% 
+    mutate_at(vars(Annee, Mois, Jour, Date), unlist)
 
 #load locations data
   locations <- readRDS("locationsDRC.RDS") %>% 
     select(PROVINCE, TERRITOIRE, LOCALITE, "Latitude" = LATITUDE, "Longitude" = LONGITUDE)
 
-# Find unique titles of documents that have already been processed
-  nowFiles <- unique(insoDataMaster$scraped_file_name)
-
-# Locate new files that haven't been processed
+# Locate all drive files
   driveFiles <- drive_ls(path = "DRIVE FOLDER WHERE FILES ARE STORED")
-  driveFiles <- driveFiles[grep("INSO ALERT|INSO RAPPORT|INSO UPDATE", driveFiles$name),]
-  newFiles <- driveFiles[!(driveFiles$name %in% nowFiles),]
+  driveFiles_detail <- as.data.frame(do.call(rbind, driveFiles$drive_resource)) %>% 
+    select(name, id, createdTime) %>% 
+    mutate_at(vars(name, id, createdTime), unlist) %>% 
+    mutate(Date = as.Date(createdTime))
   
-# Locate new Hebdomadaire files that haven't been processed
-  newHebdo <- driveFiles[grep("Liste_hebdomadaire", driveFiles$name),]
-  newHebdo <- newHebdo[!(newHebdo$name %in% nowFiles),]
+# Locate alert files within last 3 day window  
+  newFiles <- driveFiles_detail[grep("INSO ALERT|INSO RAPPORT|INSO UPDATE", driveFiles_detail$name),] %>% 
+    filter(Date > Sys.Date()-3)
+  
+# Locate new Hebdomadaire files uploaded within the last 3 days
+  newHebdo <- driveFiles_detail[grep("Liste_hebdomadaire|Liste hebdomadaire", driveFiles_detail$name),] %>% 
+    filter(Date > Sys.Date()-3)
 
 #For population time of day column
   # create breaks for time of day
@@ -70,27 +66,44 @@ if (nrow(newFiles) > 0 | nrow(newHebdo) > 0) {
       # find report date & time
         x <- text[grep("DATE & HORAIRE|DATE & TIME", text$text)+1,]
       
-      # order columns day month year
+    # check that the time/date formatting is recognizable
+      if(length(unlist(strsplit(x, split = " "))) > 2) {
+        
+        # if not input NA, and a fake time for formatting reasons
+        annee <- NA
+        mois <- NA
+        jour <- NA
+        time_of_day <- NA
+        heure <- "12:00 AM"
+        
+      } else {
+        
+        # find report date, time, and time of day
         date <- unlist(strsplit(x, split = " "))[1]
         annee <- lubridate::year(as.Date(date, format = "%d/%m/%Y"))
         mois <- lubridate::month(as.Date(date, format = "%d/%m/%Y"))
         jour <- lubridate::day(as.Date(date, format = "%d/%m/%Y"))
         
-      # convert military time to standard
+        # convert military time to standard
         heure <- as.POSIXct(paste(paste(annee, mois, jour, sep = "-"), unlist(strsplit(x, split = " "))[2]))
         heure <- format(heure, "%I:%M %p")
+        heure <- gsub("^0", "", heure)
         
-      # calculate time of day based on military time
+        # calculate time of day based on military time
         time_of_day <- cut(x = lubridate::hour(lubridate::hm(unlist(strsplit(x, split = " "))[2])), 
                            breaks = breaks, 
                            labels = labels, 
                            include.lowest = TRUE)
-      
-      # find province, territoire, village, road
+        
+        # end date/time if statement
+      }
+
+      # find full location string
         full_lieu <- paste(text[(grep("LIEU|LOCATION", text$text)+1):(grep("TYPE D'INCIDENT|INCIDENT TYPE", text$text)-1),], collapse = " ")
         full_lieu <- gsub("<https:\\/\\/www.google.*","", full_lieu)
         x <- trimws(strsplit(full_lieu, split = ",")[[1]])
-        
+      
+      # assign province, territoire, village, road
         province <- unlist(x)[2]
         territoire <- x[grep("Territoire|territoire", x)]
           territoire <- ifelse(length(territoire) > 0, territoire, NA)
@@ -107,9 +120,14 @@ if (nrow(newFiles) > 0 | nrow(newHebdo) > 0) {
       # find description of event
       ##INFORMATION
         start <- grep("INFORMATION", text$text)
-        stop <- grep("RECOMMANDATION ACTUALISÉE|ACTION RECOMMANDÉE|UPDATED ADVICE", text$text) - 1
+        stop <- grep("RECOMMANDATION ACTUALISÉE|ACTION RECOMMANDÉE|UPDATED ADVICE|ANALYSE|ANALYSISRAPPORTS INITIAUX", text$text) - 1
+        
+      if(length(start) > 0 && length(stop) > 0) {
         description <- paste(text[(start[1]):(stop[1]),], collapse = " ")
-      
+      } else {
+        description <- "Error in scraping, please check with script maintainer"
+      }
+        
       ##check if RAPPORTS INITIAUX exists and scrape if it does
         x <- grep("RAPPORTS INITIAUX|INITIAL REPORT", text$text)
         
@@ -125,6 +143,7 @@ if (nrow(newFiles) > 0 | nrow(newHebdo) > 0) {
                          "Mois" = mois,
                          "Jour" = jour,
                          "Heure" = heure,
+                         "Date" = paste(jour, mois, annee, sep = "-"),
                          "Time_of_Day" = time_of_day,
                          "Province" = province,	
                          "Territoire" = territoire,	
@@ -136,14 +155,17 @@ if (nrow(newFiles) > 0 | nrow(newHebdo) > 0) {
                          stringsAsFactors = FALSE
                          )
         
-        #bind to temp data frame
-        df <- dplyr::bind_rows(df, row)
+      #bind to temp data frame
+        df <- bind_rows(df, row)
+        
       }
   }
   
   # if there are new Hebdomadaire files, read data and add to df if yes
   if(nrow(newHebdo) > 0) {
+    
     for (i in 1:nrow(newHebdo)) {
+      
       # read a new sheet file from drive to local df
       drive_download(drive_get(id = newHebdo$id[i]),
                      path = "tempFile path",
@@ -152,7 +174,8 @@ if (nrow(newFiles) > 0 | nrow(newHebdo) > 0) {
       # read excel file
       data <- readxl::read_excel("tempFile path", 
                                  sheet = 1,
-                                 skip = 10)
+                                 skip = 10,
+                                 col_types = c("numeric", "text", "numeric", "date", rep(text, 12)))
       
       # remove crappy first row and select columns we need
       data <- data[-1,] %>% 
@@ -169,9 +192,24 @@ if (nrow(newFiles) > 0 | nrow(newHebdo) > 0) {
                               include.lowest = TRUE)
       
       data$Heure <- format(data$Heure, "%I:%M %p")
+      data$Heure <- gsub("^0", "", data$Heure)
       
       # correct from month name to month number
       data$Mois <- match(data$Mois, toupper(month.abb))
+      
+      # add Date column
+      data <- data %>% mutate(Date = paste(Jour, Mois, Annee, sep = "-"))
+       
+      # clean up Province column
+      data$Province <- gsub("NORD_KIVU", "Nord Kivu", data$Province)
+      data$Province <- gsub("SUD_KIVU", "Sud Kivu", data$Province)
+      data$Province <- gsub("_", "-", data$Province)
+      
+      # convert Province, Territoire, and Village columns to Title Case
+      data$Province <- stringr::str_to_title(data$Province)
+      data$Territoire <- stringr::str_to_title(data$Territoire)
+      data$Village <- stringr::str_to_title(data$Village)
+      data$Axe <- stringr::str_to_title(data$Axe)
       
       #bind to temp data frame
       df <- dplyr::bind_rows(df, data)
@@ -179,14 +217,18 @@ if (nrow(newFiles) > 0 | nrow(newHebdo) > 0) {
   }
   
     #left join df with locations file
-    df <- left_join(df, locations, 
+    df <- left_join(df, dplyr::distinct(locations, PROVINCE, TERRITOIRE, LOCALITE, .keep_all = T), 
                     by = c("Province" = "PROVINCE", 
                            "Territoire" = "TERRITOIRE", 
                            "Village" = "LOCALITE"))
     
     #bind to master and sort
     insoDataMaster <- dplyr::bind_rows(insoDataMaster, df) %>% 
-      arrange(Annee, Mois, Jour)
+      distinct() %>% 
+      arrange(Annee, Mois, Jour) %>% 
+      mutate(Date = paste(Jour, Mois, Annee, sep = "-")) %>% 
+      select(Description, Annee, Mois, Jour, Date, Time_of_Day, Heure, Province,
+             Territoire, Village, Axe, Latitude, Longitude, scraped_file_name)
     
     # write new updated dataset to file
     write.csv(insoDataMaster, "./INSO_Scraping_MASTER.csv", row.names = F)
