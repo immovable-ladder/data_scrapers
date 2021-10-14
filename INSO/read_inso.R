@@ -3,8 +3,6 @@ library(stringr); library(magrittr); library(openssl)
 library(httr); library(googledrive); library(googlesheets4)
 library(lubridate)
 
-setwd("~/rworkdir/data_scraper")
-
 # authenticate yourself with google sheets
 drive_auth(
   email = gargle::gargle_oauth_email(),
