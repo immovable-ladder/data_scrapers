@@ -16,7 +16,7 @@ drive_auth(
   #  select(PROVINCE, TERRITOIRE, LOCALITE, "Latitude" = LATITUDE, "Longitude" = LONGITUDE)
 
 # Locate Drive folder files and relevant details 
-  driveFiles <- drive_ls(path = "https://drive.google.com/drive/folders/1ypOS_cCe-6G1lJh9nh23gGCJucqA_YHW")
+  driveFiles <- drive_ls(path = "INSERT PATH HERE")
   driveFiles_detail <- as.data.frame(do.call(rbind, driveFiles$drive_resource)) %>% 
     select(name, id, createdTime) %>% 
     mutate_at(vars(name, id, createdTime), unlist) %>% 
@@ -113,17 +113,17 @@ if (nrow(newHebdo) > 0) {
   df <- distinct(df)
   
   #Update Master workbook by sheet, split out by province
-  sheet_append("1Y_6CIwMjmTyCR9DxqJAyl9YeLRXTnx3OUooB6D9XKrs", filter(df, Province == "Ituri"), 
+  sheet_append("INSERT SHEET ID", filter(df, Province == "Ituri"), 
                 "Ituri Province")
-  sheet_append("1Y_6CIwMjmTyCR9DxqJAyl9YeLRXTnx3OUooB6D9XKrs", filter(df, Province == "Nord-Kivu"), 
+  sheet_append("INSERT SHEET ID", filter(df, Province == "Nord-Kivu"), 
                "North Kivu Province")
-  sheet_append("1Y_6CIwMjmTyCR9DxqJAyl9YeLRXTnx3OUooB6D9XKrs", filter(df, Province == "Maniema"), 
+  sheet_append("INSERT SHEET ID", filter(df, Province == "Maniema"), 
                "Maniema Province")
-  sheet_append("1Y_6CIwMjmTyCR9DxqJAyl9YeLRXTnx3OUooB6D9XKrs", filter(df, Province == "Sud-Kivu"), 
+  sheet_append("INSERT SHEET ID", filter(df, Province == "Sud-Kivu"), 
                "South Kivu Province")
-  sheet_append("1Y_6CIwMjmTyCR9DxqJAyl9YeLRXTnx3OUooB6D9XKrs", filter(df, Province == "Tanganyika"), 
+  sheet_append("INSERT SHEET ID", filter(df, Province == "Tanganyika"), 
                "Tanganyika Province")
-  sheet_append("1Y_6CIwMjmTyCR9DxqJAyl9YeLRXTnx3OUooB6D9XKrs", filter(df, Province == "Haut-Katanga"), 
+  sheet_append("INSERT SHEET ID", filter(df, Province == "Haut-Katanga"), 
                "Haut-Katanga Province")
 }
   
